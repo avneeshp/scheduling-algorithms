@@ -26,21 +26,22 @@ typedef enum ResType {
 	ALU
 } resource_type;
 
+/**
+ * @brief Declaration of operation class 
+ * */
 class Operation
 {
     private:
 	Instruction* m_inst;
-	int 	m_latency;
 	bool 	m_fixed;
 	int 	m_earliest;
 	int 	m_latest;
 	resource_type m_type;
 
     public:
-	Operation (Instruction* inst, int latency)
+	Operation (Instruction* inst)
 	{
 		m_inst	   = inst;	
-		m_latency  = latency;
 		m_fixed    = false;
 		m_earliest = 0;
 		m_latest   = MAX_VAL;
@@ -70,12 +71,6 @@ class Operation
 	void setFixed ()
 	{
 		m_fixed = true;
-	}
-
-	// Member function to get operation latency
-	int getLatency ()
-	{
-		return m_latency;
 	}
 
 	// Member function to get earliest cycle to which an operation can be scheduled
@@ -123,36 +118,107 @@ class Operation
 	// Member function returns the probability of scheduling an operation o in control step s
 	double getProbability (int s)	const
 	{
-		if (s >= m_latest + m_latency) return 0;
+		if (s > m_latest ) return 0;
 		if (s < m_earliest) return 0;
 
 		double result = 1.0 / (double) (getMobility());
 
 		return result;	//considering latency of each operation as 1 for now
 	}
+
+	bool equals (Operation* op)
+	{
+		if  (op == NULL) return false;
+		if (op->op_id() != m_inst) return false;
+		return true;
+	}
 };	
-   
-struct comp
+  
+/**
+ * @brief Declaration of Operation Graph class 
+ * */
+class OpGraph
 {
-  bool operator()(Operation* s1, Operation* s2) const
-  {
-    return ((s1->getEarliest() + s2->getEarliest()) > 0);
-  }
+    private:
+	std::list <Operation*>* m_oplist;
+	std::map <Operation*, std::list<Operation*>>* m_predmap;
+	std::map <Operation*, std::list<Operation*>>* m_succmap;
+
+    public:
+	OpGraph ()
+	{
+	    m_oplist = new std::list <Operation*> ();
+	    m_predmap = new std::map <Operation*, std::list<Operation*>> ();
+	    m_succmap = new std::map <Operation*, std::list<Operation*>> ();
+	}
+	~OpGraph ()
+	{
+	    delete m_predmap;
+	    delete m_succmap;
+	    delete m_oplist;
+	}
+
+	void insertOperation(Operation* op)
+	{
+	    m_oplist->push_back(op);
+	}
+	
+	std::list <Operation*>* getOperationList()
+	{
+	    return m_oplist;
+	}
+	
+	void insertPredecessor(Operation* op, std::list<Operation*> predList)
+	{
+	    (*m_predmap)[op] = predList;
+	}
+	
+	void insertSuccessor(Operation* op, std::list<Operation*> succList)
+	{
+	    (*m_succmap)[op] = succList;
+	}
+
+	std::map <Operation*, std::list<Operation*>>* getPredecessorsMap ()
+	{
+	     return m_predmap;
+	}
+	
+	std::map <Operation*, std::list<Operation*>>* getSuccessorsMap ()
+	{
+	     return m_succmap;
+	}
+	
+	std::list <Operation*>* getUnscheduledOperations ()
+	{
+	     std::list <Operation*>* unschedOps = new std::list <Operation*> ();
+	     for (std::list<Operation*>::iterator it = m_oplist->begin(); it != m_oplist->end(); it++)
+	     {
+		Operation *op = *it;
+		if (op->isFixed() == true) continue;
+	 	if (op->getMobility() <= 1) continue;
+		unschedOps->push_back(op);
+	     }
+	     return unschedOps;
+	}
+
 };
- 
+
+/**
+ * @brief Declaration of Distribution Graph class 
+ * */
 class DistGraph {
     private:
 	// Member represents the type of function unit
 	resource_type m_rtype;
-	std::set <Operation*, comp>* m_operations;
-	std::map <Operation*, double, comp>* m_avg_resource_usage;
+	std::list <Operation*>* m_operations;
+	std::map <Operation*, double>* m_avg_resource_usage;
 
     public:
 	DistGraph (resource_type rtype)
 	{
 		m_rtype = rtype;
-		m_operations = new std::set <Operation*, comp>();
-		m_avg_resource_usage = new std::map <Operation*, double, comp>();
+		m_operations = new std::list <Operation*>();
+		m_avg_resource_usage = new std::map <Operation*, double>();
 	}
 	~DistGraph()
 	{
@@ -166,11 +232,11 @@ class DistGraph {
 	}
 	
 	void insertOp(Operation* op) {
-		m_operations->insert(op);
+		m_operations->push_back(op);
 		return;
 	}
 
-	std::set<Operation*, comp>* getOp() 
+	std::list<Operation*>* getOp() 
 	{
 		return m_operations;
 	}
@@ -179,22 +245,28 @@ class DistGraph {
 	double getResourceUsage(resource_type rtype, int cstep) {
 		if (m_rtype != rtype) return 0.0;
 		double r_usage = 0.0;
-		for (std::set<Operation*>::iterator opIter = m_operations->begin(); opIter != m_operations->end(); ++opIter) {
+		for (std::list<Operation*>::iterator opIter = m_operations->begin(); opIter != m_operations->end(); ++opIter) {
 			r_usage += (*opIter)->getProbability (cstep);
 		}
 		return r_usage;
 		
 	}
-	void avgResourceUsage(resource_type rtype, Operation* op) {
+	void setAvgResourceUsage(resource_type rtype, Operation* op) {
 		double avg_usage = 0.0;
 		int start = op->getEarliest();
 		int end = op->getLatest();
-		for (int i = start; (start != end) && (i <= end); i++) {
+		for (int i = start; (i <= end); i++) {
 			avg_usage += getResourceUsage(rtype, i);
 		}
 		avg_usage /= ((double) (end - start + 1));
 		(*m_avg_resource_usage)[op] = avg_usage;
 		return;
+	}
+	
+	double getAvgResourceUsage (Operation* op)
+	{
+		double avg_rusage = (*m_avg_resource_usage)[op];
+		return avg_rusage;
 	}
 
 	// Member function to get self force for a resource at a particular time step
@@ -203,15 +275,16 @@ class DistGraph {
 		resource_type rtype = op->getResourceType();
 		int start = op->getEarliest();
 		int end = op->getLatest();
-		if ((cstep >= start) && (cstep <= end)) return 0.0;
+		if ((cstep < start) || (cstep > end)) return 0.0;
 		double rusage_at_time = getResourceUsage(rtype, cstep);
-		double avg_rusage = ((*m_avg_resource_usage)[op]);
+		double avg_rusage = getAvgResourceUsage(op);
 		sForce = rusage_at_time - avg_rusage;
 		return sForce;
 	}
 	
 	// Member function to get successor force for a resource
 	double succForce(Operation* succ, int cstep) {
+		if (succ->getMobility() == 1) return 0.0;
 		int start_time = cstep + 1;
 
 		int prev_start_time = succ->getEarliest();
@@ -221,7 +294,7 @@ class DistGraph {
 		int range = succ->getMobility();
 		resource_type rtype = succ->getResourceType();
 		double rusage_wrt_time = getResourceUsage(rtype, cstep);
-		double avg_rusage = ((*m_avg_resource_usage)[succ]) / range;
+		double avg_rusage = getAvgResourceUsage(succ);
 		succForce = rusage_wrt_time - avg_rusage;
 
 		succ->setEarliest(prev_start_time);
@@ -230,6 +303,7 @@ class DistGraph {
 
 	// Member function to get predecessor force for a resource
 	double predForce(Operation* pred, int cstep) {
+		if (pred->getMobility() == 1) return 0.0;
 		int end_time   = cstep - 1;
 
 		int prev_latest_time = pred->getLatest();
@@ -239,12 +313,11 @@ class DistGraph {
 		int range = pred->getMobility();
 		resource_type rtype = pred->getResourceType();
 		double rusage_at_time = getResourceUsage(rtype, cstep);
-		double avg_rusage = ((*m_avg_resource_usage)[pred]) / range;
+		double avg_rusage = getAvgResourceUsage(pred);
 		predForce = rusage_at_time - avg_rusage;
 		pred->setLatest(prev_latest_time);
 		return predForce;
 	}
-
 
 };
 
@@ -259,200 +332,151 @@ class DistGraph {
     int getTotalCSteps(std::map<Instruction*, int> asapList);
     void printCycleTime(std::map<Instruction*, int>, std::ofstream& );
     resource_type fuType(Instruction*);
-    //void calculateFDScheduling();
+    void printFDSCycleTime(std::list <Operation*>*, int, std::ofstream&);
     
     bool runOnBasicBlock(BasicBlock &BB) override {
 	std::map <Instruction* , int>* asapSchedList = ASAP(BB);
 	int csteps = getTotalCSteps(*asapSchedList);
 	std::map <Instruction* , int>* alapSchedList = ALAP(BB, csteps);
-	std::list <Operation*>* OpList = new std::list<Operation*>();
-	std::map <Operation*, std::list<Operation*>*>* succMap = new std::map<Operation*, std::list<Operation*>*>();
-	std::map <Operation*, std::list<Operation*>*>* predMap = new std::map<Operation*, std::list<Operation*>*>();
+	std::list <Operation*> OpList;
+	OpGraph* operationGraph = new OpGraph();
 	for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
 		Instruction *Inst = DI++;
 		int i = Inst->getNumOperands();
 		if (i > 0) {
-			Operation* Op = new Operation(Inst, 1);
+			Operation* Op = new Operation(Inst);
 			Op->setEarliest((*asapSchedList)[Inst]);
 			Op->setLatest((*alapSchedList)[Inst]);
 			if ((*asapSchedList)[Inst] == (*alapSchedList)[Inst])
 				Op->setFixed();
 			resource_type rtype = fuType(Inst);
 			Op->setResourceType(rtype);
-			OpList->push_back(Op);
+			OpList.push_back(Op);
+			operationGraph->insertOperation(Op);
 		}
 	}
+	std::list <Operation*>* OperationList = operationGraph->getOperationList();
 	
-	for (std::list<Operation*>::iterator opIter = OpList->begin(); opIter != OpList->end(); ++opIter) {
-		Instruction* inst = (*opIter)->op_id();
+	for (std::list<Operation*>::iterator opIter = OpList.begin(); opIter != OpList.end(); ++opIter) {
+		Operation* op = *opIter;
+		Instruction* inst = op->op_id();
 		std::set<Instruction*>* succ = getSuccessors(inst);
-		std::list <Operation*>* succList = new std::list<Operation*>();
+		std::list <Operation*> succList;
 		for (std::set<Instruction*>::iterator it = succ->begin(); it != succ->end(); it++) {
 			Instruction *Inst = *it;
-			int i = Inst->getNumOperands();
-			if (i > 0) {
-				Operation* Op = new Operation(Inst, 1);
-				Op->setEarliest((*asapSchedList)[Inst]);
-				Op->setLatest((*alapSchedList)[Inst]);
-				if ((*asapSchedList)[Inst] == (*alapSchedList)[Inst])
-					Op->setFixed();
-				resource_type rtype = fuType(Inst);
-				Op->setResourceType(rtype);
-				succList->push_back(Op);
+			for (std::list<Operation*>::iterator iter = OperationList->begin(); iter != OperationList->end(); iter++) {
+				Operation* oper = *iter;
+				if (oper->op_id() != Inst) continue;
+				succList.push_back(oper);
 			}
-
 		}
-		(*succMap)[*opIter] = succList;
+		operationGraph->insertSuccessor(op, succList);
 	}
-	for (std::list<Operation*>::iterator opIter = OpList->begin(); opIter != OpList->end(); ++opIter) {
-		Instruction* inst = (*opIter)->op_id();
+	for (std::list<Operation*>::iterator opIter = OpList.begin(); opIter != OpList.end(); ++opIter) {
+		Operation* op = *opIter;
+		Instruction* inst = op->op_id();
 		std::set<Instruction*>* pred = getPredecessors(inst, asapSchedList);
-		std::list <Operation*>* predList = new std::list<Operation*>();
+		std::list <Operation*> predList;
 		for (std::set<Instruction*>::iterator it = pred->begin(); it != pred->end(); it++) {
 			Instruction *Inst = *it;
-			int i = Inst->getNumOperands();
-			if (i > 0) {
-				Operation* Op = new Operation(Inst, 1);
-				Op->setEarliest((*asapSchedList)[Inst]);
-				Op->setLatest((*alapSchedList)[Inst]);
-				if ((*asapSchedList)[Inst] == (*alapSchedList)[Inst])
-					Op->setFixed();
-				resource_type rtype = fuType(Inst);
-				Op->setResourceType(rtype);
-				predList->push_back(Op);
+			for (std::list<Operation*>::iterator iter = OperationList->begin(); iter != OperationList->end(); iter++) {
+				Operation* oper = *iter;
+				if (oper->op_id() != Inst) continue;
+				predList.push_back(oper);
 			}
-
 		}
-		(*predMap)[*opIter] = predList;
+		operationGraph->insertPredecessor(op, predList);
 	}
+	std::map <Operation*, std::list<Operation*>>* succMap = operationGraph->getSuccessorsMap();
+	std::map <Operation*, std::list<Operation*>>* predMap = operationGraph->getPredecessorsMap();
 	
-
 	//Distribution graph for multiply
 	resource_type multiplier = MUL;
 	DistGraph* dGraphMul = new DistGraph(multiplier);
-	for (std::list<Operation*>::iterator opIter = OpList->begin(); opIter != OpList->end(); ++opIter) {
+	for (std::list<Operation*>::iterator opIter = OperationList->begin(); opIter != OperationList->end(); ++opIter) {
 		if ((*opIter)->getOpType() == MUL) {
 		   dGraphMul->insertOp(*opIter);
-		   dGraphMul->avgResourceUsage(multiplier, *opIter);
+		   dGraphMul->setAvgResourceUsage(multiplier, *opIter);
 		}
 	}
 	
 	//Distribution graph for ALU
 	resource_type add_sub = ALU;
 	DistGraph* dGraphALU = new DistGraph(add_sub);
-	for (std::list<Operation*>::iterator opIter = OpList->begin(); opIter != OpList->end(); ++opIter) {
+	for (std::list<Operation*>::iterator opIter = OperationList->begin(); opIter != OperationList->end(); ++opIter) {
 		if ((*opIter)->getOpType() == ALU) {
 		   dGraphALU->insertOp(*opIter);
-		   dGraphALU->avgResourceUsage(add_sub, *opIter);
+		   dGraphALU->setAvgResourceUsage(add_sub, *opIter);
 		}
 	}
 	
+	while (1) {
+		std::list <Operation*>* unschedOps  = operationGraph->getUnscheduledOperations();
+		if (unschedOps->size() <= 0) {
+			delete unschedOps;
+			break;
+		}
+		Operation* minOperation = NULL;
+		double min_force = MAX_VAL;
+		int scheduled_step = -1;
+		for (std::list <Operation*>::iterator it = unschedOps->begin(); it != unschedOps->end(); it++) {
+			Operation* Op = *it;
+			for (int step = Op->getEarliest(); step <= Op->getLatest(); step++) {
+				double selfForce;
+				double sumPredForce = 0.0;
+				double sumSuccForce = 0.0;
+				resource_type rtype = Op->getResourceType();
+				if (rtype == MUL) {
+					selfForce = dGraphMul->selfForce(Op, step);
+					std::list<Operation*> succList = (*succMap)[Op];
+					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
+						Operation* succ = *iter;
+						sumSuccForce += dGraphMul->succForce(succ, step);
+					}
+					std::list<Operation*> predList = (*succMap)[Op];
+					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
+						Operation* pred = *iter;
+						sumPredForce += dGraphMul->predForce(pred, step);
+					}
+				}	
+				if (rtype == ALU) {
+					selfForce = dGraphALU->selfForce(Op, step);	
+					std::list<Operation*> succList = (*succMap)[Op];
+					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
+						Operation* succ = *iter;
+						sumSuccForce += dGraphALU->succForce(succ, step);
+					}
+					std::list<Operation*> predList = (*succMap)[Op];
+					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
+						Operation* pred = *iter;
+						sumPredForce += dGraphALU->predForce(pred, step);
+					}
+				}
+				double current_force = selfForce + sumPredForce + sumSuccForce;
+
+				if (current_force < min_force) {
+					min_force = current_force;
+					scheduled_step = step;
+					minOperation = Op;
+				}
+			}
+		}		
+
+		minOperation->setEarliest(scheduled_step);
+		minOperation->setLatest(scheduled_step);
+		minOperation->setFixed();
+		delete unschedOps;
+	}
 	std::ofstream myfile;
 	myfile.open ("/home/avneesh/Desktop/sched/sched_v2/schedule.txt");
 	myfile << "\n***** ASAP Scheduling ***** \n\n";
 	printCycleTime(*asapSchedList, myfile);
 	myfile << "\n\n***** ALAP Scheduling ***** \n\n";
 	printCycleTime(*alapSchedList, myfile);
-	myfile << "\n\n***** Time Frames ***** \n\n";
-	for (std::list<Operation*>::iterator opIter = OpList->begin(); opIter != OpList->end(); ++opIter) {
-		Operation* Op = *opIter;
-		Instruction* inst = Op->op_id();
-		std::string str;
-		llvm::raw_string_ostream rso(str);
-		inst->print(rso);	
-		myfile << str << "\n";
-		myfile << "Start Cycle: " << Op->getEarliest() << "\n";
-		myfile << "End Cycle: " << Op->getLatest() << "\n";
-	}
-	myfile << "\n\n***** Distribution Graph for Multiply ***** \n\n";
-	for (int step = 1; step < csteps; step++) {
-		myfile << "Time Step : " << step << "\t" << dGraphMul->getResourceUsage(multiplier, step) << "\n";
-		std::set<Operation*, comp>* mulOpSet = dGraphMul->getOp();
-		for (std::set<Operation*, comp>::iterator opIter = mulOpSet->begin(); opIter != mulOpSet->end(); ++opIter) {
-			Operation* Op = *opIter;
-			Instruction* inst = Op->op_id();
-			std::string str;
-			llvm::raw_string_ostream rso(str);
-			inst->print(rso);
-			double avg_usage = 0.0;
-			int start = (*opIter)->getEarliest();
-			int end = (*opIter)->getLatest();
-			double rusage = dGraphMul->getResourceUsage(multiplier, step);
-			if ((step < start) || (step > end)) continue;
-			for (int i = start; i <= end; i++) {
-				avg_usage += dGraphMul->getResourceUsage(multiplier, i);
-			}
-			avg_usage /= ((double) (end - start + 1));
-			myfile << "Self Force : " << str << " : " << step <<" => " << (rusage - avg_usage) << "\n";
-		}
-	}	
-	myfile << "\n\n***** Distribution Graph for ALU ***** \n\n";
-	for (int step = 1; step < csteps; step++) {
-		myfile << "Time Step : " << step << "\t" << dGraphALU->getResourceUsage(add_sub, step) << "\n";
-		std::set<Operation*, comp>* aluOpSet = dGraphALU->getOp();
-		for (std::set<Operation*, comp>::iterator opIter = aluOpSet->begin(); opIter != aluOpSet->end(); ++opIter) {
-			Operation* Op = *opIter;
-			Instruction* inst = Op->op_id();
-			std::string str;
-			llvm::raw_string_ostream rso(str);
-			inst->print(rso);
-			double avg_usage = 0.0;
-			int start = (*opIter)->getEarliest();
-			int end = (*opIter)->getLatest();
-			double rusage = dGraphALU->getResourceUsage(add_sub, step);
-			if ((step < start) || (step > end)) continue;
-			for (int i = start; i <= end; i++) {
-				avg_usage += dGraphALU->getResourceUsage(add_sub, i);
-			}
-			avg_usage /= ((double) (end - start + 1));
-			myfile << "Self Force : " << str << " : " << step <<" => " << (rusage - avg_usage) << "\n";
-			if (Op->isFixed() == false) {
-				std::list<Operation*>* sList = (*succMap)[Op];
-				for (std::list<Operation*>::iterator it = sList->begin(); it != sList->end(); it++) {
-					Operation* successor = *opIter;
-					Instruction* Inst = successor->op_id();
-					std::string sstr;
-					llvm::raw_string_ostream rso(sstr);
-					Inst->print(rso);
-					int start_time = step + 1;
-					double avg_succ_usage = 0.0;
+	
+	myfile << "\n\n***** FDS Scheduling ***** \n\n";
+	printFDSCycleTime(OperationList, csteps, myfile); 
 
-					int prev_start_time = successor->getEarliest();
-					successor->setEarliest(start_time);
-					int end_time = successor->getLatest();
-					double succ_rusage = dGraphALU->getResourceUsage(add_sub, step);
-					for (int j = start_time; j <= end_time; j++) {
-						avg_succ_usage += dGraphALU->getResourceUsage(add_sub, j);
-					}
-					avg_succ_usage /= ((double) (end_time - start_time + 1));
-					myfile << "Succ Force : " << sstr << " : " << step <<" => " << (succ_rusage - avg_succ_usage) << "\n";
-					successor->setEarliest(prev_start_time);
-				}
-				std::list<Operation*>* pList = (*predMap)[Op];
-				for (std::list<Operation*>::iterator it = pList->begin(); it != pList->end(); it++) {
-					Operation* predecessor = *opIter;
-					Instruction* Inst = predecessor->op_id();
-					std::string pstr;
-					llvm::raw_string_ostream rso(pstr);
-					Inst->print(rso);
-					int end_time = step - 1;
-					double avg_pred_usage = 0.0;
-
-					int prev_end_time = predecessor->getLatest();
-					predecessor->setLatest(end_time);
-					int start_time = predecessor->getEarliest();
-					double pred_rusage = dGraphALU->getResourceUsage(add_sub, step);
-					for (int j = start_time; j <= end_time; j++) {
-						avg_pred_usage += dGraphALU->getResourceUsage(add_sub, j);
-					}
-					avg_pred_usage /= ((double) (end_time - start_time + 1));
-					myfile << "Pred Force : " << pstr << " : " << step <<" => " << (pred_rusage - avg_pred_usage) << "\n";
-					predecessor->setLatest(prev_end_time);
-				}
-			}
-
-		}
-	}	
 	myfile.close();
 	return true;
     }
@@ -553,6 +577,26 @@ void fds::printCycleTime(std::map<Instruction*, int> opMap, std::ofstream& myfil
 	return;
 }
 
+void fds::printFDSCycleTime(std::list <Operation*>*opList, int max_value, std::ofstream& myfile) {
+	int cycle_num = 1;
+	Instruction *Inst;
+	while (cycle_num <= max_value) {
+		myfile << "[ Cycle Time " << cycle_num << " ]\n";
+		for (std::list <Operation*>::iterator opIter = opList->begin(); opIter != opList->end(); ++opIter) {
+			if ((*opIter)->getEarliest() == cycle_num) {
+				Inst = (*opIter)->op_id();
+				std::string str;
+				llvm::raw_string_ostream rso(str);
+				Inst->print(rso);
+				myfile << str << "\n";
+			}
+		}
+		cycle_num = cycle_num + 1;
+	}
+	return;
+}
+
+
 // Function returns a map of operations scheduled ALAP
 std::map<Instruction* , int>* fds::ALAP(BasicBlock &BB, int csteps)
 {
@@ -629,3 +673,4 @@ std::set<Instruction*>* fds::getSuccessors(Instruction* Inst)
 
 char fds::ID = 0;
 static RegisterPass<fds> X("fds", "FDS Scheduler");
+
