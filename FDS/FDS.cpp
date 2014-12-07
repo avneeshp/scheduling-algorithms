@@ -11,6 +11,7 @@
 #include <set>
 #include <list>
 #include <string.h>
+#include <unistd.h>
 
 #define MAX_VAL 100
 
@@ -467,8 +468,13 @@ class DistGraph {
 		minOperation->setFixed();
 		delete unschedOps;
 	}
+	char* cwd = get_current_dir_name();
+	char* filename = (char*)"/schedule.txt";
+	int len = strlen(cwd) + strlen(filename);
+	char* path = (char*)malloc(len);
+	sprintf(path, "%s%s", cwd, filename);
 	std::ofstream myfile;
-	myfile.open ("/home/avneesh/Desktop/sched/sched_v2/schedule.txt");
+	myfile.open (path);
 	myfile << "\n***** ASAP Scheduling ***** \n\n";
 	printCycleTime(*asapSchedList, myfile);
 	myfile << "\n\n***** ALAP Scheduling ***** \n\n";
@@ -478,6 +484,8 @@ class DistGraph {
 	printFDSCycleTime(OperationList, csteps, myfile); 
 
 	myfile.close();
+	if (NULL != cwd) free (cwd);
+	if (NULL != path) free(path);
 	return true;
     }
   };
