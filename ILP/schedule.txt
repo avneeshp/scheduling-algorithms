@@ -1,0 +1,237 @@
+------------------------ASAP-------------------
+
+-----Cycle 1 ------
+add = x17 + x10
+add5 = x16 + x11
+add9 = x14 + x13
+add13 = x15 + x12
+sub = x10 - x17
+sub20 = x11 - x16
+sub24 = x13 - x14
+sub28 = x12 - x15
+
+-----Cycle 2 ------
+mul = sub * 5098
+mul33 = sub20 * 6013
+mul36 = sub24 * 25629
+mul39 = sub28 * 8999
+add43 = add + add9
+add47 = add5 + add13
+sub51 = add - add9
+sub55 = add5 - add13
+
+-----Cycle 3 ------
+add59 = mul + mul36
+add63 = mul33 + mul39
+sub67 = mul - mul36
+sub71 = mul33 - mul39
+mul74 = sub51 * 5412
+mul77 = sub55 * 13065
+add87 = add43 + add47
+sub91 = add43 - add47
+
+-----Cycle 4 ------
+mul80 = sub67 * 5412
+mul83 = sub71 * 13065
+sub99 = mul74 - mul77
+sub107 = add59 - add63
+add95 = mul74 + mul77
+add103 = add59 + add63
+mul150 = add87 * 25
+mul162 = sub91 * 45703
+
+-----Cycle 5 ------
+sub115 = mul80 - mul83
+mul121 = sub99 * 7071
+mul124 = sub107 * 7071
+add111 = mul80 + mul83
+*y10 = mul150
+*y14 = mul162
+mul168 = sub99 * 45703
+
+-----Cycle 6 ------
+mul127 = sub115 * 7071
+add131 = add95 + mul121
+mul124200 = sub115 + sub107
+*y16 = mul168
+mul171 = sub115 * 45703
+
+-----Cycle 7 ------
+add135 = add111 + mul127
+mul156 = add131 * 25
+mul165 = mul124200 * 45703
+*y17 = mul171
+
+-----Cycle 8 ------
+add139 = add103 + add135
+add147 = add135 + mul124
+*y12 = mul156
+*y15 = mul165
+
+-----Cycle 9 ------
+mul153 = add139 * 25
+mul159 = add147 * 25
+
+-----Cycle 10 ------
+*y11 = mul153
+*y13 = mul159
+
+
+------------------------ALAP-------------------
+
+-----Cycle 1 ------
+sub = x10 - x17
+sub20 = x11 - x16
+sub24 = x13 - x14
+sub28 = x12 - x15
+
+-----Cycle 2 ------
+mul = sub * 5098
+mul33 = sub20 * 6013
+mul36 = sub24 * 25629
+mul39 = sub28 * 8999
+
+-----Cycle 3 ------
+add = x17 + x10
+add5 = x16 + x11
+add9 = x14 + x13
+add13 = x15 + x12
+sub67 = mul - mul36
+sub71 = mul33 - mul39
+
+-----Cycle 4 ------
+sub51 = add - add9
+sub55 = add5 - add13
+mul80 = sub67 * 5412
+mul83 = sub71 * 13065
+
+-----Cycle 5 ------
+add59 = mul + mul36
+add63 = mul33 + mul39
+mul74 = sub51 * 5412
+mul77 = sub55 * 13065
+sub115 = mul80 - mul83
+
+-----Cycle 6 ------
+sub99 = mul74 - mul77
+sub107 = add59 - add63
+mul127 = sub115 * 7071
+add111 = mul80 + mul83
+
+-----Cycle 7 ------
+add43 = add + add9
+add47 = add5 + add13
+mul121 = sub99 * 7071
+mul124 = sub107 * 7071
+add95 = mul74 + mul77
+add135 = add111 + mul127
+add103 = add59 + add63
+
+-----Cycle 8 ------
+add87 = add43 + add47
+sub91 = add43 - add47
+add131 = add95 + mul121
+add139 = add103 + add135
+mul124200 = sub115 + sub107
+add147 = add135 + mul124
+
+-----Cycle 9 ------
+mul150 = add87 * 25
+mul153 = add139 * 25
+mul156 = add131 * 25
+mul159 = add147 * 25
+mul162 = sub91 * 45703
+mul165 = mul124200 * 45703
+mul168 = sub99 * 45703
+mul171 = sub115 * 45703
+
+-----Cycle 10 ------
+*y10 = mul150
+*y11 = mul153
+*y12 = mul156
+*y13 = mul159
+*y14 = mul162
+*y15 = mul165
+*y16 = mul168
+*y17 = mul171
+
+
+------------------------ILP-------------------
+
+-----Cycle 1 ------
+sub = x10 - x17
+sub20 = x11 - x16
+sub24 = x13 - x14
+sub28 = x12 - x15
+
+-----Cycle 2 ------
+add = x17 + x10
+add5 = x16 + x11
+add9 = x14 + x13
+add13 = x15 + x12
+mul = sub * 5098
+mul33 = sub20 * 6013
+mul36 = sub24 * 25629
+mul39 = sub28 * 8999
+
+-----Cycle 3 ------
+add43 = add + add9
+add47 = add5 + add13
+sub67 = mul - mul36
+sub71 = mul33 - mul39
+
+-----Cycle 4 ------
+sub51 = add - add9
+sub55 = add5 - add13
+add59 = mul + mul36
+mul80 = sub67 * 5412
+mul83 = sub71 * 13065
+add87 = add43 + add47
+
+-----Cycle 5 ------
+add63 = mul33 + mul39
+mul74 = sub51 * 5412
+mul77 = sub55 * 13065
+sub91 = add43 - add47
+sub115 = mul80 - mul83
+add111 = mul80 + mul83
+
+-----Cycle 6 ------
+sub99 = mul74 - mul77
+sub107 = add59 - add63
+mul127 = sub115 * 7071
+add103 = add59 + add63
+mul171 = sub115 * 45703
+
+-----Cycle 7 ------
+mul121 = sub99 * 7071
+mul124 = sub107 * 7071
+add95 = mul74 + mul77
+add135 = add111 + mul127
+*y17 = mul171
+
+-----Cycle 8 ------
+add131 = add95 + mul121
+add139 = add103 + add135
+mul124200 = sub115 + sub107
+add147 = add135 + mul124
+mul150 = add87 * 25
+mul162 = sub91 * 45703
+mul168 = sub99 * 45703
+
+-----Cycle 9 ------
+mul153 = add139 * 25
+mul156 = add131 * 25
+mul159 = add147 * 25
+mul165 = mul124200 * 45703
+
+-----Cycle 10 ------
+*y10 = mul150
+*y11 = mul153
+*y12 = mul156
+*y13 = mul159
+*y14 = mul162
+*y15 = mul165
+*y16 = mul168
+
+

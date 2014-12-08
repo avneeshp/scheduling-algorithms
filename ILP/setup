@@ -1,0 +1,4 @@
+#!/bin/bash
+# Python 2.7.5 + llvmpy-0.11.2 
+export PATH=/classes/ece5775/tools/install/bin:$PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/classes/ece5775/tools/install/lib
