@@ -700,7 +700,7 @@ std::set<Instruction*>* fds::getPredecessors(Instruction* Inst, std::map<Instruc
 	for (std::map<Instruction*, int>::iterator iter=instList->begin(); iter != instList->end(); ++iter) {
 	    for (Use &U : (iter->first->uses())) {
 		Instruction *User = cast<Instruction>(U.getUser());
-		if (User->getName() == Inst->getName()) {
+		if (User == Inst) {
 			predSet->insert(iter->first);
 		}
 	    }
