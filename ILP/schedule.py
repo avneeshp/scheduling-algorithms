@@ -5,6 +5,7 @@ import sys
 import os
 import operator
 import llvm 
+import math
 # top-level, for common stuff
 from llvm.core import *
 from copy import deepcopy
@@ -102,10 +103,10 @@ def run(testcase):
     dut_name = os.path.splitext(os.path.basename(testcase))[0]
     dut = m.get_function_named(dut_name)
 
-    MUL_C                = 4
-    ADDSUB_C             = 4
+    MUL_C                = 1
+    ADDSUB_C             = 1
     DEBUG_PRINT          = 0
-
+    FACTOR               = 1.5
 
 
     #===------------------------------ASAP SCHEDULING-----------------------------===
@@ -163,6 +164,8 @@ def run(testcase):
     dut_name = os.path.splitext(os.path.basename(testcase))[0]
     dut = m.get_function_named(dut_name)
 
+    maxi = int(FACTOR * maxi);
+
     cycles_alap = {to_string(inst):(maxi+1) for inst in dut.basic_blocks[0].instructions}
     for inst in reversed(dut.basic_blocks[0].instructions):
         # Print its operands in short name 
@@ -201,7 +204,8 @@ def run(testcase):
     fp.write('\n')
     fp.write('\n')
     #fp.close()
-      
+    
+    #maxi = 2 * maxi;
     unique_start_time = [[0 for x in range(maxi)] for x in range(no_of_inst-1)]
     mul_constraint    = [[0 for x in range(maxi)] for x in range(no_of_inst-1)]
     addsub_constraint = [[0 for x in range(maxi)] for x in range(no_of_inst-1)]
@@ -243,7 +247,7 @@ def run(testcase):
       print addsub_constraint
    
     dependence_constraint = [[0 for x in range(maxi)] for x in range(no_of_inst-1)]
-    lp = lpsolve('make_lp', 0, (no_of_inst-1) * maxi)
+    lp = lpsolve('make_lp', 0, (no_of_inst-1) * maxi + 2)
     #===---------------------Dependence Constraint------------------------===
     if DEBUG_PRINT == 1:
       print '------Dependence Constraint-------'
@@ -273,9 +277,12 @@ def run(testcase):
               for j in range(0, no_of_inst-1):
                 k =(maxi*j + i)
                 d_add[k] = dependence_constraint[j][i]
-            ret = lpsolve('add_constraint', lp, d_add, LE, -1)
+                d_add_c = [0] * 2
+                d_addf = d_add + d_add_c
+            ret = lpsolve('add_constraint', lp, d_addf, LE, -1)
             if DEBUG_PRINT == 1:
               print dependence_constraint
+              print d_addf
 
     no_of_inst = no_of_inst-1
     #lp = lpsolve('make_lp', 0, no_of_inst * maxi)
@@ -288,11 +295,12 @@ def run(testcase):
       y = unique_start_time[i]
       v = [1] * maxi
       z = [0] * ((no_of_inst*maxi - maxi - i*maxi))
-      w = x+y+z
+      u = [0] * 2
+      w = x+y+z+u
       if DEBUG_PRINT == 1:
         print w
       ret = lpsolve('add_constraint', lp, w, EQ, 1)
-      w = x+v+z
+      w = x+v+z+u
       ret = lpsolve('add_constraint', lp, w, EQ, 1)
       if DEBUG_PRINT == 1:
         print w
@@ -312,27 +320,56 @@ def run(testcase):
         b_mul[k] = mul_constraint[j][i]
         b_add[k] = addsub_constraint[j][i]
         d_add[k] = dependence_constraint[j][i]
-      ret = lpsolve('add_constraint', lp, b_mul, LE, MUL_C)
-      ret = lpsolve('add_constraint', lp, b_add, LE, ADDSUB_C)
+        b_mul_c  = [-1, 0]
+        b_muld   = b_mul + b_mul_c;
+        b_add_c  = [0, -1]
+        b_addd    = b_add + b_add_c;
+      #ret = lpsolve('add_constraint', lp, b_muld, LE, MUL_C)
+      #ret = lpsolve('add_constraint', lp, b_addd, LE, ADDSUB_C)
+      ret = lpsolve('add_constraint', lp, b_muld, LE, 0)
+      ret = lpsolve('add_constraint', lp, b_addd, LE, 0)
       if DEBUG_PRINT == 1:
         print b_add
+        print b_addd
 
+
+    objective = [0] * ((no_of_inst) * maxi) + [1,1]
+    if DEBUG_PRINT == 1:
+      print '---objective---'
+      print objective
     #ret = lpsolve('add_constraint', lp, d_add, LE, -1)
 
+    ret = lpsolve('set_obj_fn', lp, objective)
     obj = lpsolve('set_timeout',lp, 15)
     obj = lpsolve('solve',lp)
     var = lpsolve('get_variables', lp)
     
+    mulcount    = var[0][(no_of_inst)*maxi]
+    addsubcount = var[0][(no_of_inst)*maxi+1]
+
+    if DEBUG_PRINT == 1:
+        print var
+   
+    print ' \n \n '
+    message = " Time Constraint " + str(FACTOR) + " * ASAP_LATENCY"
+    print message
+    message = " Number of multipliers required = " + str(mulcount)
+    print message
+    message = " Number of addsub units required = " + str(addsubcount)
+    print message
     fp.write('------------------------ILP-------------------')
     fp.write('\n')
+    cycle_count = 1
     #===------------------------------ILP--------------------------===
     for i in range(1, maxi+1):
-        cyc = "-----Cycle " + str(i) + " ------"
+        cyc = "-----Cycle " + str(cycle_count) + " ------"
         fp.write('\n')
         fp.write(cyc)
         fp.write('\n')
+        flag = 0
         for j in range(0, no_of_inst):
-          if var[0][maxi*j + i-1] == 1.0:
+          if var[0][maxi*j + i-1] != 0.0:
+            flag = 1
             k = 0
             for inst in dut.basic_blocks[0].instructions:
               if k == j:
@@ -341,6 +378,8 @@ def run(testcase):
                 break
               else:
                 k = k + 1
+        if flag == 1:
+         cycle_count = cycle_count + 1 
 
     fp.write('\n')
     fp.write('\n')
