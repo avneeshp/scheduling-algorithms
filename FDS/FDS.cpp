@@ -159,36 +159,43 @@ class OpGraph
 	    delete m_oplist;
 	}
 
+	// Member function to insert an operation in the operation list
 	void insertOperation(Operation* op)
 	{
 	    m_oplist->push_back(op);
 	}
 	
+	// Member function to get operation list
 	std::list <Operation*>* getOperationList()
 	{
 	    return m_oplist;
 	}
 	
+	// Member function to insert an operation and its predecessor list in the map
 	void insertPredecessor(Operation* op, std::list<Operation*> predList)
 	{
 	    (*m_predmap)[op] = predList;
 	}
 	
+	// Member function to insert an operation and its successor list in the map
 	void insertSuccessor(Operation* op, std::list<Operation*> succList)
 	{
 	    (*m_succmap)[op] = succList;
 	}
 
+	// Member function to get a map of operations and their predecessors
 	std::map <Operation*, std::list<Operation*>>* getPredecessorsMap ()
 	{
 	     return m_predmap;
 	}
 	
+	// Member function to get a map of operations and their successors
 	std::map <Operation*, std::list<Operation*>>* getSuccessorsMap ()
 	{
 	     return m_succmap;
 	}
 	
+	// Member function to get list of unscheduled operations
 	std::list <Operation*>* getUnscheduledOperations ()
 	{
 	     std::list <Operation*>* unschedOps = new std::list <Operation*> ();
@@ -252,6 +259,7 @@ class DistGraph {
 		return r_usage;
 		
 	}
+
 	void setAvgResourceUsage(resource_type rtype, Operation* op) {
 		double avg_usage = 0.0;
 		int start = op->getEarliest();
@@ -283,7 +291,7 @@ class DistGraph {
 		return sForce;
 	}
 	
-	// Member function to get successor force for a resource
+	// Member function to get successor force for an operation at a particular time step 
 	double succForce(Operation* succ, int cstep) {
 		if (succ->getMobility() == 1) return 0.0;
 		int start_time = cstep + 1;
@@ -292,7 +300,6 @@ class DistGraph {
 		succ->setEarliest(start_time);
 		
 		double succForce = 0.0;
-		int range = succ->getMobility();
 		resource_type rtype = succ->getResourceType();
 		double rusage_wrt_time = getResourceUsage(rtype, cstep);
 		double avg_rusage = getAvgResourceUsage(succ);
@@ -302,7 +309,7 @@ class DistGraph {
 		return succForce;
 	}
 
-	// Member function to get predecessor force for a resource
+	// Member function to get predecessor force for an operation at a particular time step
 	double predForce(Operation* pred, int cstep) {
 		if (pred->getMobility() == 1) return 0.0;
 		int end_time   = cstep - 1;
@@ -311,7 +318,6 @@ class DistGraph {
 		pred->setLatest(end_time);
 		
 		double predForce = 0.0;
-		int range = pred->getMobility();
 		resource_type rtype = pred->getResourceType();
 		double rusage_at_time = getResourceUsage(rtype, cstep);
 		double avg_rusage = getAvgResourceUsage(pred);
@@ -346,11 +352,18 @@ class DistGraph {
 		int i = Inst->getNumOperands();
 		if (i > 0) {
 			Operation* Op = new Operation(Inst);
-			Op->setEarliest((*asapSchedList)[Inst]);
-			Op->setLatest((*alapSchedList)[Inst]);
-			if ((*asapSchedList)[Inst] == (*alapSchedList)[Inst])
-				Op->setFixed();
 			resource_type rtype = fuType(Inst);
+			if ((rtype == MUL) || (rtype == ALU)) {
+				Op->setEarliest((*asapSchedList)[Inst]);
+				Op->setLatest((*alapSchedList)[Inst]);
+				if ((*asapSchedList)[Inst] == (*alapSchedList)[Inst])
+					Op->setFixed();
+			} else {
+				//Scheduling all stores instructions in same cycle as ALAP for now
+				Op->setEarliest((*alapSchedList)[Inst]);
+				Op->setLatest((*alapSchedList)[Inst]);
+				Op->setFixed();
+			}	
 			Op->setResourceType(rtype);
 			OpList.push_back(Op);
 			operationGraph->insertOperation(Op);
@@ -434,8 +447,8 @@ class DistGraph {
 						Operation* succ = *iter;
 						sumSuccForce += dGraphMul->succForce(succ, step);
 					}
-					std::list<Operation*> predList = (*succMap)[Op];
-					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
+					std::list<Operation*> predList = (*predMap)[Op];
+					for (std::list<Operation*>::iterator iter = predList.begin(); iter != predList.end(); iter++) {
 						Operation* pred = *iter;
 						sumPredForce += dGraphMul->predForce(pred, step);
 					}
@@ -447,8 +460,8 @@ class DistGraph {
 						Operation* succ = *iter;
 						sumSuccForce += dGraphALU->succForce(succ, step);
 					}
-					std::list<Operation*> predList = (*succMap)[Op];
-					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
+					std::list<Operation*> predList = (*predMap)[Op];
+					for (std::list<Operation*>::iterator iter = predList.begin(); iter != predList.end(); iter++) {
 						Operation* pred = *iter;
 						sumPredForce += dGraphALU->predForce(pred, step);
 					}
@@ -469,7 +482,7 @@ class DistGraph {
 		delete unschedOps;
 	}
 	char* cwd = get_current_dir_name();
-	char* filename = (char*)"/schedule.txt";
+	const char* filename = "/schedule.txt";
 	int len = strlen(cwd) + strlen(filename);
 	char* path = (char*)malloc(len);
 	sprintf(path, "%s%s", cwd, filename);
@@ -517,7 +530,7 @@ std::map<Instruction* , int>* fds::ASAP(BasicBlock &BB)
 {
 	std::map <Instruction* , int>* asapList = new std::map<Instruction*, int>();
 	std::set<Instruction*>* instList = new std::set<Instruction*>();
-	
+
 	for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
 		Instruction *Inst = DI++;
 		unsigned i = Inst->getNumOperands();
@@ -532,34 +545,34 @@ std::map<Instruction* , int>* fds::ASAP(BasicBlock &BB)
 		std::set<Instruction*>*pred = getPredecessors(Inst, asapList);
 		if ((i > 0) && (pred->empty())) {
 			(*asapList)[Inst] = 1;
-	    		instList->erase(Inst);
+			instList->erase(Inst);
 		}
 		delete pred;
 	}
 	while (instList->size() > 0) {
-	    Instruction* Inst;
-	    for (std::map<Instruction*, int>::iterator sIter=asapList->begin(); sIter != asapList->end(); ++sIter) {
-		Inst = sIter->first;
-            	if (instList->find(sIter->first) == instList->end()) continue;
-		std::set<Instruction*>* pred = getPredecessors(Inst, asapList);
-		bool allPredSched = true;
-		int max_pred_val = 0;
-		for (std::set<Instruction*>::iterator iter=pred->begin(); iter != pred->end(); ++iter) {
-		    if (instList->find(*iter) != instList->end()) {
-			allPredSched = false;
-			break;
-		    } else if ((*asapList)[*iter] > max_pred_val) {
-			max_pred_val = (*asapList)[*iter];
-		    }
+		Instruction* Inst;
+		for (std::map<Instruction*, int>::iterator sIter=asapList->begin(); sIter != asapList->end(); ++sIter) {
+			Inst = sIter->first;
+			if (instList->find(sIter->first) == instList->end()) continue;
+			std::set<Instruction*>* pred = getPredecessors(Inst, asapList);
+			bool allPredSched = true;
+			int max_pred_val = 0;
+			for (std::set<Instruction*>::iterator iter=pred->begin(); iter != pred->end(); ++iter) {
+				if (instList->find(*iter) != instList->end()) {
+					allPredSched = false;
+					break;
+				} else if ((*asapList)[*iter] > max_pred_val) {
+					max_pred_val = (*asapList)[*iter];
+				}
+			}
+			if (allPredSched == true) {
+				(*asapList)[Inst] = max_pred_val + 1;
+				instList->erase(Inst);
+			}
+			delete pred;
 		}
-		if (allPredSched == true) {
-			(*asapList)[Inst] = max_pred_val + 1;
-	    		instList->erase(Inst);
-		}
-		delete pred;
-	    }
 	}
-	
+
 	delete instList;
 	return asapList;
 }
@@ -567,9 +580,13 @@ std::map<Instruction* , int>* fds::ASAP(BasicBlock &BB)
 // Function write instructions scheduled in each cycle for all scheduling algorithms in a file
 void fds::printCycleTime(std::map<Instruction*, int> opMap, std::ofstream& myfile) {
 	int cycle_num = 1;
+	int max_addsub = 0;
+	int max_mul = 0;
 	int max_value = getTotalCSteps(opMap);
 	Instruction *Inst;
 	while (cycle_num <= max_value) {
+		int num_of_addsub = 0;
+		int num_of_mul = 0;
 		myfile << "[ Cycle Time " << cycle_num << " ]\n";
 		for (std::map<Instruction*, int>::iterator mapIter = opMap.begin(); mapIter != opMap.end(); ++mapIter) {
 			Inst = mapIter->first;
@@ -578,20 +595,38 @@ void fds::printCycleTime(std::map<Instruction*, int> opMap, std::ofstream& myfil
 			Inst->print(rso);
 			if (mapIter->second == cycle_num) {
 				myfile << str << "\n";
+				if ((Inst->getOpcode() == Instruction::Add) || (Inst->getOpcode() == Instruction::Sub))
+					num_of_addsub += 1;
+				if (Inst->getOpcode() == Instruction::Mul)
+					num_of_mul += 1;
 			}
 		}
+		if (max_mul < num_of_mul)
+			max_mul = num_of_mul;
+		if (max_addsub < num_of_addsub)
+			max_addsub = num_of_addsub;
 		cycle_num = cycle_num + 1;
 	}
+	myfile << "\nNumber of AddSub Required : " << max_addsub << "\n";
+	myfile << "\nNumber of Multipliers Required : " << max_mul << "\n";
 	return;
 }
 
 void fds::printFDSCycleTime(std::list <Operation*>*opList, int max_value, std::ofstream& myfile) {
 	int cycle_num = 1;
 	Instruction *Inst;
+	int max_addsub = 0;
+	int max_mul = 0;
 	while (cycle_num <= max_value) {
+		int num_of_addsub = 0;
+		int num_of_mul = 0;
 		myfile << "[ Cycle Time " << cycle_num << " ]\n";
 		for (std::list <Operation*>::iterator opIter = opList->begin(); opIter != opList->end(); ++opIter) {
 			if ((*opIter)->getEarliest() == cycle_num) {
+				if ((*opIter)->getResourceType() == MUL)
+					num_of_mul += 1;
+				if ((*opIter)->getResourceType() == ALU)
+					num_of_addsub += 1;
 				Inst = (*opIter)->op_id();
 				std::string str;
 				llvm::raw_string_ostream rso(str);
@@ -599,11 +634,16 @@ void fds::printFDSCycleTime(std::list <Operation*>*opList, int max_value, std::o
 				myfile << str << "\n";
 			}
 		}
+		if (max_mul < num_of_mul)
+			max_mul = num_of_mul;
+		if (max_addsub < num_of_addsub)
+			max_addsub = num_of_addsub;
 		cycle_num = cycle_num + 1;
 	}
+	myfile << "\nNumber of AddSub Required : " << max_addsub << "\n";
+	myfile << "\nNumber of Multipliers Required : " << max_mul << "\n";
 	return;
 }
-
 
 // Function returns a map of operations scheduled ALAP
 std::map<Instruction* , int>* fds::ALAP(BasicBlock &BB, int csteps)
@@ -660,7 +700,7 @@ std::set<Instruction*>* fds::getPredecessors(Instruction* Inst, std::map<Instruc
 	for (std::map<Instruction*, int>::iterator iter=instList->begin(); iter != instList->end(); ++iter) {
 	    for (Use &U : (iter->first->uses())) {
 		Instruction *User = cast<Instruction>(U.getUser());
-		if (User->getName() == Inst->getName()) {
+		if (User == Inst) {
 			predSet->insert(iter->first);
 		}
 	    }
@@ -681,4 +721,3 @@ std::set<Instruction*>* fds::getSuccessors(Instruction* Inst)
 
 char fds::ID = 0;
 static RegisterPass<fds> X("fds", "FDS Scheduler");
-
