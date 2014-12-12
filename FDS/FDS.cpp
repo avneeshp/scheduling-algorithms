@@ -12,6 +12,7 @@
 #include <list>
 #include <string.h>
 #include <unistd.h>
+#include <chrono>
 
 #define MAX_VAL 100
 
@@ -208,6 +209,106 @@ class OpGraph
 	     }
 	     return unschedOps;
 	}
+	void updateTimeFrames (int time_constraint)
+	{
+		std::list<Operation*>* unschedOps = getUnscheduledOperations();
+		bool allPredPlanned;
+		bool allSuccPlanned;
+
+		//ASAP schedules
+		for (std::list<Operation*>::iterator it = unschedOps->begin(); it != unschedOps->end();)
+		{
+			Operation* op = *it++;
+			std::list <Operation*> predlist = (*m_predmap)[op];
+			if (predlist.empty()) {
+				unschedOps->remove(op);
+			}
+				
+		}
+		while (unschedOps->size() > 0)
+		{
+			for (std::list<Operation*>::iterator it = unschedOps->begin(); it != unschedOps->end();)
+			{
+				Operation* op = *it++;
+				allPredPlanned = true;
+				std::list<Operation*> predlist = (*m_predmap)[op];
+				
+				for (std::list<Operation*>::iterator iter = predlist.begin(); iter != predlist.end(); iter++) {
+					Operation* pred = *iter;
+					std::list<Operation*>::iterator tmpIter = find(unschedOps->begin(), unschedOps->end(), pred);
+					if (tmpIter != unschedOps->end())
+						allPredPlanned = false;
+				}
+				if (allPredPlanned)
+				{
+					int start_time = calculateEarliestStart(op) + 1;
+					op->setEarliest(start_time);
+					unschedOps->remove(op);
+				}
+			}
+		}
+
+		//ALAP schedules
+		std::list<Operation*>* unplannedOps = getUnscheduledOperations();
+		for (std::list<Operation*>::iterator it = unplannedOps->begin(); it != unplannedOps->end();)
+		{
+			Operation* op = *it++;
+			std::list <Operation*> succlist = (*m_succmap)[op];
+			if (succlist.empty()) {
+				unplannedOps->remove(op);
+			}
+				
+		}
+		while (unplannedOps->size() > 0)
+		{
+			for (std::list<Operation*>::iterator it = unplannedOps->begin(); it != unplannedOps->end();)
+			{
+				Operation* op = *it++;
+				allSuccPlanned = true;
+				std::list<Operation*> succlist = (*m_succmap)[op];
+				
+				for (std::list<Operation*>::iterator iter = succlist.begin(); iter != succlist.end(); iter++) {
+					Operation* succ = *iter;
+					std::list<Operation*>::iterator tmpIter = find(unplannedOps->begin(), unplannedOps->end(), succ);
+					if (tmpIter != unplannedOps->end())
+						allSuccPlanned = false;
+				}
+				if (allSuccPlanned)
+				{
+					int end_time = calculateLatestEnd(op) - 1;
+					op->setLatest(end_time);
+					unplannedOps->remove(op);
+				}
+			}
+		}	
+	}
+	int calculateLatestEnd(Operation* op)
+	{
+		std::list<Operation*> succlist = (*m_succmap)[op];
+		int min_t = succlist.front()->getLatest();
+		
+		for (std::list<Operation*>::iterator it = succlist.begin(); it != succlist.end(); it++) {
+			Operation* succ = *it;
+			if(succ->getLatest() < min_t){
+				min_t = succ->getLatest();
+			}
+		}
+		return min_t;
+	}
+	
+	int calculateEarliestStart( Operation* op)
+	{
+		std::list<Operation*> predlist = (*m_predmap)[op];
+		int max_t = 0;
+		
+		for (std::list<Operation*>::iterator it = predlist.begin(); it != predlist.end(); it++) {
+			Operation* pred = *it;
+			if(pred->getEarliest() > max_t){
+				max_t = pred->getEarliest();
+			}
+		}
+		return max_t;
+	}
 
 };
 
@@ -342,8 +443,20 @@ class DistGraph {
     void printFDSCycleTime(std::list <Operation*>*, int, std::ofstream&);
     
     bool runOnBasicBlock(BasicBlock &BB) override {
+	float in;
+	auto start = std::chrono::high_resolution_clock::now();
+	char* cwd = get_current_dir_name();
+	const char* fname = "/cycles.txt";
+	int length = strlen(cwd) + strlen(fname);
+	char* cyc_path = (char*)malloc(length);
+	sprintf(cyc_path, "%s%s", cwd, fname);
+	std::ifstream input_file;
+	input_file.open (cyc_path);
+	input_file >> in;
+	input_file.close();
 	std::map <Instruction* , int>* asapSchedList = ASAP(BB);
-	int csteps = getTotalCSteps(*asapSchedList);
+	int asap_csteps = getTotalCSteps(*asapSchedList);
+	int csteps = in * asap_csteps;
 	std::map <Instruction* , int>* alapSchedList = ALAP(BB, csteps);
 	std::list <Operation*> OpList;
 	OpGraph* operationGraph = new OpGraph();
@@ -425,6 +538,7 @@ class DistGraph {
 	}
 	
 	while (1) {
+		operationGraph->updateTimeFrames(csteps);
 		std::list <Operation*>* unschedOps  = operationGraph->getUnscheduledOperations();
 		if (unschedOps->size() <= 0) {
 			delete unschedOps;
@@ -445,12 +559,18 @@ class DistGraph {
 					std::list<Operation*> succList = (*succMap)[Op];
 					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
 						Operation* succ = *iter;
-						sumSuccForce += dGraphMul->succForce(succ, step);
+						if (succ->getResourceType() == MUL)
+							sumSuccForce += dGraphMul->succForce(succ, step);
+						else
+							sumSuccForce += dGraphALU->succForce(succ, step);
 					}
 					std::list<Operation*> predList = (*predMap)[Op];
 					for (std::list<Operation*>::iterator iter = predList.begin(); iter != predList.end(); iter++) {
 						Operation* pred = *iter;
-						sumPredForce += dGraphMul->predForce(pred, step);
+						if (pred->getResourceType() == MUL)
+							sumPredForce += dGraphMul->predForce(pred, step);
+						else
+							sumPredForce += dGraphALU->predForce(pred, step);
 					}
 				}	
 				if (rtype == ALU) {
@@ -458,12 +578,18 @@ class DistGraph {
 					std::list<Operation*> succList = (*succMap)[Op];
 					for (std::list<Operation*>::iterator iter = succList.begin(); iter != succList.end(); iter++) {
 						Operation* succ = *iter;
-						sumSuccForce += dGraphALU->succForce(succ, step);
+						if (succ->getResourceType() == MUL)
+							sumSuccForce += dGraphMul->succForce(succ, step);
+						else
+							sumSuccForce += dGraphALU->succForce(succ, step);
 					}
 					std::list<Operation*> predList = (*predMap)[Op];
 					for (std::list<Operation*>::iterator iter = predList.begin(); iter != predList.end(); iter++) {
 						Operation* pred = *iter;
-						sumPredForce += dGraphALU->predForce(pred, step);
+						if (pred->getResourceType() == MUL)
+							sumPredForce += dGraphMul->predForce(pred, step);
+						else
+							sumPredForce += dGraphALU->predForce(pred, step);
 					}
 				}
 				double current_force = selfForce + sumPredForce + sumSuccForce;
@@ -475,30 +601,27 @@ class DistGraph {
 				}
 			}
 		}		
-
 		minOperation->setEarliest(scheduled_step);
 		minOperation->setLatest(scheduled_step);
 		minOperation->setFixed();
 		delete unschedOps;
 	}
-	char* cwd = get_current_dir_name();
 	const char* filename = "/schedule.txt";
 	int len = strlen(cwd) + strlen(filename);
 	char* path = (char*)malloc(len);
 	sprintf(path, "%s%s", cwd, filename);
 	std::ofstream myfile;
 	myfile.open (path);
-	myfile << "\n***** ASAP Scheduling ***** \n\n";
-	printCycleTime(*asapSchedList, myfile);
-	myfile << "\n\n***** ALAP Scheduling ***** \n\n";
-	printCycleTime(*alapSchedList, myfile);
 	
 	myfile << "\n\n***** FDS Scheduling ***** \n\n";
 	printFDSCycleTime(OperationList, csteps, myfile); 
-
+	auto elapsed = std::chrono::high_resolution_clock::now() - start;
+	long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+	myfile << "Execution Time: " << microseconds << "\n";
 	myfile.close();
 	if (NULL != cwd) free (cwd);
 	if (NULL != path) free(path);
+	if (NULL != cyc_path) free(cyc_path);
 	return true;
     }
   };
