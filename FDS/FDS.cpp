@@ -1,7 +1,7 @@
 #include "llvm/ADT/Statistic.h"
-#include "llvm/IR/BasicBlock.h"
+#include "llvm/BasicBlock.h"
 #include "llvm/Pass.h"
-#include "llvm/IR/Instructions.h"
+#include "llvm/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/STLExtras.h"
 #include <vector>
@@ -12,7 +12,6 @@
 #include <list>
 #include <string.h>
 #include <unistd.h>
-#include <chrono>
 
 #define MAX_VAL 100
 
@@ -143,15 +142,15 @@ class OpGraph
 {
     private:
 	std::list <Operation*>* m_oplist;
-	std::map <Operation*, std::list<Operation*>>* m_predmap;
-	std::map <Operation*, std::list<Operation*>>* m_succmap;
+	std::map <Operation*, std::list<Operation*> >* m_predmap;
+	std::map <Operation*, std::list<Operation*> >* m_succmap;
 
     public:
 	OpGraph ()
 	{
 	    m_oplist = new std::list <Operation*> ();
-	    m_predmap = new std::map <Operation*, std::list<Operation*>> ();
-	    m_succmap = new std::map <Operation*, std::list<Operation*>> ();
+	    m_predmap = new std::map <Operation*, std::list<Operation*> > ();
+	    m_succmap = new std::map <Operation*, std::list<Operation*> > ();
 	}
 	~OpGraph ()
 	{
@@ -185,13 +184,13 @@ class OpGraph
 	}
 
 	// Member function to get a map of operations and their predecessors
-	std::map <Operation*, std::list<Operation*>>* getPredecessorsMap ()
+	std::map <Operation*, std::list<Operation*> >* getPredecessorsMap ()
 	{
 	     return m_predmap;
 	}
 	
 	// Member function to get a map of operations and their successors
-	std::map <Operation*, std::list<Operation*>>* getSuccessorsMap ()
+	std::map <Operation*, std::list<Operation*> >* getSuccessorsMap ()
 	{
 	     return m_succmap;
 	}
@@ -442,9 +441,8 @@ class DistGraph {
     resource_type fuType(Instruction*);
     void printFDSCycleTime(std::list <Operation*>*, int, std::ofstream&);
     
-    bool runOnBasicBlock(BasicBlock &BB) override {
+    virtual bool runOnBasicBlock(BasicBlock &BB) {
 	float in;
-	auto start = std::chrono::high_resolution_clock::now();
 	char* cwd = get_current_dir_name();
 	const char* fname = "/cycles.txt";
 	int length = strlen(cwd) + strlen(fname);
@@ -514,8 +512,8 @@ class DistGraph {
 		}
 		operationGraph->insertPredecessor(op, predList);
 	}
-	std::map <Operation*, std::list<Operation*>>* succMap = operationGraph->getSuccessorsMap();
-	std::map <Operation*, std::list<Operation*>>* predMap = operationGraph->getPredecessorsMap();
+	std::map <Operation*, std::list<Operation*> >* succMap = operationGraph->getSuccessorsMap();
+	std::map <Operation*, std::list<Operation*> >* predMap = operationGraph->getPredecessorsMap();
 	
 	//Distribution graph for multiply
 	resource_type multiplier = MUL;
@@ -550,7 +548,7 @@ class DistGraph {
 		for (std::list <Operation*>::iterator it = unschedOps->begin(); it != unschedOps->end(); it++) {
 			Operation* Op = *it;
 			for (int step = Op->getEarliest(); step <= Op->getLatest(); step++) {
-				double selfForce;
+				double selfForce = 0.0;
 				double sumPredForce = 0.0;
 				double sumSuccForce = 0.0;
 				resource_type rtype = Op->getResourceType();
@@ -615,9 +613,6 @@ class DistGraph {
 	
 	myfile << "\n\n***** FDS Scheduling ***** \n\n";
 	printFDSCycleTime(OperationList, csteps, myfile); 
-	auto elapsed = std::chrono::high_resolution_clock::now() - start;
-	long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
-	myfile << "Execution Time: " << microseconds << "\n";
 	myfile.close();
 	if (NULL != cwd) free (cwd);
 	if (NULL != path) free(path);
@@ -821,8 +816,8 @@ std::set<Instruction*>* fds::getPredecessors(Instruction* Inst, std::map<Instruc
 {
 	std::set<Instruction*>* predSet = new std::set<Instruction*>();
 	for (std::map<Instruction*, int>::iterator iter=instList->begin(); iter != instList->end(); ++iter) {
-	    for (Use &U : (iter->first->uses())) {
-		Instruction *User = cast<Instruction>(U.getUser());
+	    for (Value::use_iterator UI = iter->first->use_begin(); UI != iter->first->use_end(); UI++) {
+		Instruction *User = static_cast<Instruction*>(*UI);
 		if (User == Inst) {
 			predSet->insert(iter->first);
 		}
@@ -835,8 +830,8 @@ std::set<Instruction*>* fds::getPredecessors(Instruction* Inst, std::map<Instruc
 std::set<Instruction*>* fds::getSuccessors(Instruction* Inst)
 {
 	std::set<Instruction*>* succSet = new std::set<Instruction*>();
-	for (Use &U : Inst->uses()) {
-		Instruction *User = cast<Instruction>(U.getUser());
+	for (Value::use_iterator UI = Inst->use_begin(); UI != Inst->use_end(); UI++) {
+		Instruction *User = static_cast<Instruction*>(*UI);
 		succSet->insert(User);
 	}
 	return succSet;

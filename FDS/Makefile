@@ -7,7 +7,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../../..
+LEVEL = ../..
 LIBRARYNAME = LLVMFDS
 LOADABLE_MODULE = 1
 USEDLIBS =
