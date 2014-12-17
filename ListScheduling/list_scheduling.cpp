@@ -2,6 +2,7 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/Pass.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/User.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/STLExtras.h"
 #include <iostream>
@@ -22,43 +23,28 @@ using namespace llvm;
 namespace {
     
   struct l_s : public BasicBlockPass {
-    static char ID; // Pass identification, replacement for typeid
+    static char ID; 
     l_s() : BasicBlockPass(ID) {}
     
-    std::map<Instruction* , int> ASAP(BasicBlock &BB); //Function for asap
+    std::map<Instruction* , int> ASAP(BasicBlock &BB); 
     int getTotalCSteps(std::map<Instruction*, int> asapList);
     std::set<Instruction*> getSuccessors(Instruction*);
+    std::map<Instruction*, int> getPredecessors(Instruction* Inst, std::map<Instruction*, int> instList);
     std::map<Instruction* , int> ALAP(BasicBlock &BB, int csteps);
-    void printCycleTime(std::map<Instruction*, int>, std::ofstream& );
-    std::map<Instruction*, int> ListSchedule(BasicBlock &BB, int csteps, std::map<Instruction*, int> asapList,  std::map<Instruction*, int> alapList);
+    void printCycleTimeLS(std::map<Instruction*, int> opMap, std::ofstream& myfile, int max_value);
+    std::map<Instruction*, int> ListSchedule(BasicBlock &BB, int* curr_time, int csteps, std::map<Instruction*, int> asapList,  std::map<Instruction*, int> alapList);
 
     bool runOnBasicBlock(BasicBlock &BB) override {
 	std::map <Instruction*, int> asapSchedList = ASAP(BB);
 	int csteps = getTotalCSteps(asapSchedList);
         std::map <Instruction* , int> alapSchedList = ALAP(BB, csteps);
- 	std::map <Instruction*, int> listschedule = ListSchedule(BB, csteps,asapSchedList,alapSchedList);
-	//std::list <Operation> OpList; //= new std::list<Operation*>();
-	for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
-		Instruction *Inst = DI++;
-		int i = Inst->getNumOperands();
-		if (i > 0) {
-			/*Operation* Op = new Operation(Inst, 1);
-			Op->setEarliest(asapSchedList[Inst]);
-			//Op->setLatest(alapSchedList[Inst]);
-			if (asapSchedList[Inst] == alapSchedList[Inst])
-				Op->setFixed();
-			OpList.push_back(Op);*/
-		}
-	} 
+	int curr_time = 0;
+ 	std::map <Instruction*, int> listschedule = ListSchedule(BB, &curr_time,csteps,asapSchedList,alapSchedList);
 	
 	std::ofstream myfile;
-	myfile.open ("/home/deepagm/llvm/TestFiles/schedule.txt");
-	myfile << "\n***** ASAP Scheduling ***** \n\n";
-	printCycleTime(asapSchedList, myfile);
-        myfile << "\n\n***** ALAP Scheduling ***** \n\n";
-	printCycleTime(alapSchedList, myfile);
-	myfile << "\n\n***** List Scheduling ***** \n\n";
-	printCycleTime(listschedule, myfile);
+	myfile.open ("/home/deepagm/llvm/TestFiles/schedule.txt");//specify the path for the file for schedule.txt
+	myfile << "***** List Scheduling ***** \n\n";
+	printCycleTimeLS(listschedule, myfile, curr_time);
 	myfile.close();
 	return true;
     }
@@ -68,8 +54,8 @@ namespace {
 // Function returns a map of scheduled operations
 std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 {
-	std::map <Instruction* , int> asapList ; //= new std::map<Instruction*, int>();
-	std::vector <llvm::StringRef> instList; //= new std::set<llvm::StringRef>();
+	std::map <Instruction* , int> asapList ;
+	std::vector <llvm::StringRef> instList;
 	for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
 		Instruction *Inst = DI++;
 		instList.push_back(Inst->getName());
@@ -89,7 +75,7 @@ std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 			if ((leftOp && (*iter == leftOp->getName())) || (rightOp && (*iter == rightOp->getName())))
 				isPresent = true;
 		}
-		if ((i > 0) && (false == isPresent)) asapList[Inst] = 1;
+		if ((i > 0) && (isPresent == false )) asapList[Inst] = 1;
 	}
 
 	unsigned i = 0;
@@ -98,7 +84,7 @@ std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 		for (std::map<Instruction*, int>::iterator mapIter=asapList.begin(); mapIter != asapList.end(); ++mapIter) {
 			Inst = mapIter->first;
 			if ((unsigned)mapIter->second == i) {
-				for (Use &U : Inst->uses()) { // Inst->uses returns iterator_range //rangebased for loop
+				for (Use &U : Inst->uses()) { 
 					Instruction *User = cast<Instruction>(U.getUser());
 					asapList[User] = asapList[Inst] + 1;
 				}
@@ -106,14 +92,23 @@ std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 		}
 		i++;
 	}
+	int c = 0;
+	for(auto i = asapList.begin(); i!= asapList.end(); i++)
+	{
+		if( i->second== 0) c++;
+		if (c > 2) break;
+	}
+	if(c>2) {
+	for(auto i = asapList.begin(); i!= asapList.end(); ++i)
+	{	asapList[i->first] = asapList[i->first]+1;
+	}} 
 	instList.clear();
 	return asapList;
 }
 
 // Function write instructions scheduled in each cycle for all scheduling algorithms in a file
-void l_s::printCycleTime(std::map<Instruction*, int> opMap, std::ofstream& myfile) {
+void l_s::printCycleTimeLS(std::map<Instruction*, int> opMap, std::ofstream& myfile, int max_value) {
 	int cycle_num = 1;
-	int max_value = getTotalCSteps(opMap);
 	Instruction *Inst;
 	while (cycle_num <= max_value) {
 		myfile << "[ Cycle Time " << cycle_num << " ]\n";
@@ -188,12 +183,13 @@ std::map<Instruction* , int> l_s::ALAP(BasicBlock &BB, int csteps)
 	return alapList;
 }
 // Function returns a map of scheduled operations
-std::map<Instruction* , int>l_s::ListSchedule(BasicBlock &BB, int csteps, std::map<Instruction*, int> asapList,  std::map<Instruction*, int> alapList)
+std::map<Instruction* , int>l_s::ListSchedule(BasicBlock &BB, int* curr_time, int csteps, std::map<Instruction*, int> asapList,  std::map<Instruction*, int> alapList)
 {
 	int mul_units;
 	int add_units;
+
 	std::ifstream myfile;
-	myfile.open ("/home/deepagm/llvm/TestFiles/Resource_constraints.txt");
+	myfile.open ("/home/deepagm/llvm/TestFiles/Resource_constraints.txt"); //specify the path for the file for Resource_constraints.txt
 	if (myfile.is_open())
   	{
   		myfile >>mul_units;
@@ -207,74 +203,95 @@ std::map<Instruction* , int>l_s::ListSchedule(BasicBlock &BB, int csteps, std::m
 	        errs() << "Unable to open file"<<'\n';
 	}
 
-	std::map <Instruction* , int> List_p ; //Instruction list with priority
-	std::map <Instruction* , int> List_ls ; //map for listscheduled instructions
+	std::map <Instruction* , int> List_p ;
+	std::map <Instruction* , int> List_ls ;
+        std::set<Instruction*> predset;
+	BasicBlock::iterator DI;
+	int total_mul =0;
+	int total_add =0;
 	for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
 		Instruction *Inst = DI++;
-               	List_p[Inst] =  csteps - (alapList[Inst] - asapList[Inst]);
-		List_ls[Inst]= 0;
-	}
-	int c_m=0; 
-	int c_a=0;
-	Instruction* I;
-	for(auto i = List_p.begin(); i != List_p.end(); i++){
-		I = i->first;	
-		if(i->second == csteps) //max priority = csteps;
-		{
-				List_ls[I] = 1;	
-		       		if(I->getOpcode()== Instruction::Mul)
-					c_m++;
-		       		if((I->getOpcode()== Instruction::Add) || (I->getOpcode() == Instruction::Sub))
-					c_a++;
-		}
-	}
-	//errs() << c_m << '\n';
-	if(c_m >= mul_units){
-		
-		errs() << "Unable to schedule minimum number of mul_units needed = " << c_m << '\n';
-		errs() << "Reacllocating Max number of available units to " << c_m << '\n';
-		mul_units = c_m;
-	}
-	if(c_a >= mul_units){
-		
-		errs() << "Unable to schedule minimum number of AddSub_units needed = " << c_a << '\n';
-		errs() << "Reacllocating Max number of available units to " << c_a << '\n';
-		add_units = c_a;
-	}
-
-	int i = 2;	
+               	List_p[Inst] =  csteps - alapList[Inst] +1;
+		List_ls[Inst] = 0;	}
+	int c_m; 
 	int p;
-	while(i<=csteps)
-	{   
-		p = csteps-1;		
+	int c_a;
+	int time=0;
+	unsigned t=0;
+	bool canSchedule;
+	while(t!=List_ls.size()-1)
+	{
+		time++;		
+		p = csteps;
 		c_m = mul_units;
 		c_a = add_units;
-		//errs()<< "i " << i << '\n';
-		Instruction* It;
-		std::map<Instruction*, int>::iterator j ;
-		while((c_m!=0) || (c_a!=0)||(p>0))
-		{
-			for(auto j = List_p.begin(); j!=List_p.end(); j++) {
-					It = j->first;			
-					if(j->second == p)
-					{	if(!((List_ls[It]<i) && (List_ls[It]>1) && (asapList[It]<=i))){
-							if(It->getOpcode()== Instruction::Mul){
-								if(c_m)List_ls[It] = i;	c_m--;}
-							else if((It->getOpcode()== Instruction::Add) || (It->getOpcode() == Instruction::Sub)){
-								if(c_a)List_ls[It] = i; c_a--;}
-							else List_ls[It] = alapList[It];					
-										        
-					}}			 
-			            }
-			p--;
-			if(p==0) break;
-		}		
-		i++;
+		
+		while(p>0)
+		{    
+		  std::map<Instruction*, int> predSet;
+		  Instruction* It;
+		  for(auto j = List_p.begin(); j!=List_p.end(); j++)
+		  {
+					
+			canSchedule=true; 	         	
+			It = j->first;	
+			if(j->second == p)
+			{	
+			predSet = getPredecessors(It, List_ls);	
+			int max_time=time;
+			if(predSet.size() > 0) 
+			{
+			  for(auto j1=predSet.begin(); j1!=predSet.end(); j1++)
+			  {
+				
+				if((predSet[j1->first]==0) || (predSet[j1->first] == time)) canSchedule = false;
+				if(predSet[j1->first] > max_time) max_time = predSet[j1->first];
+			  }
+			 }
+		
+			 if((asapList[It]<=time) && (List_ls[It]==0) && canSchedule)
+			  {
+			    if(It->getOpcode() == Instruction::Mul)
+			      {
+				if(c_m){total_mul++;List_ls[It] = time;c_m--;t++;}
+                              }
+			    else if((It->getOpcode()== Instruction::Add) || (It->getOpcode() == Instruction::Sub))
+			      {
+				   if(c_a){total_add++;List_ls[It] = time;c_a--;t++;}
+			      }
+			    else if(It->getOpcode() == Instruction::Store)
+			      { 
+				 List_ls[It] = max_time;t++;
+			      }
+			    else
+			     {				
+				List_ls[It] = max_time;t++;
+			     }  					
+			   }
+			}		          
+                   }
+   		   p--;
+	           if((c_m==0) && (c_a==0)) break;
+		}
 	}
+	
+	*curr_time = time;
 	List_p.clear();
 	return List_ls;
 }			        
-	
+std::map<Instruction*,int> l_s::getPredecessors(Instruction* Inst, std::map<Instruction*, int> instList)
+{
+	std::map<Instruction*,int> predSet;
+	for (std::map<Instruction*, int>::iterator iter=instList.begin(); iter != instList.end(); ++iter) {
+	    for (Use &U : (iter->first->uses())) {
+		Instruction *User = cast<Instruction>(U.getUser());
+		if (User == Inst) {
+			predSet[iter->first] = instList[iter->first];
+		}
+	    }
+	}
+	return predSet;
+}
 
 char l_s::ID = 0;
 static RegisterPass<l_s> X("l_s", "List Scheduler");
