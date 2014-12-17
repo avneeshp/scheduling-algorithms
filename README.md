@@ -6,7 +6,7 @@ Three different scheduling algorithms have been implemented which are as follows
 3. List Scheduling - Heuristic Scheduling Algorithm
 
 FDS and List scheduling have been implemented in C++ in the llvm framework.
-ILP based scheduling has been in Python using llvm framework.
+ILP based scheduling has been implemented in Python using llvm framework.
 Read READMe.txt present in all 3 directories on how to integrate, compile individual folders and run the benchmarks which are present in ILP/dfgs directory
 
 
