@@ -103,10 +103,12 @@ def run(testcase):
     dut_name = os.path.splitext(os.path.basename(testcase))[0]
     dut = m.get_function_named(dut_name)
 
+    MUL_C                = 3
+    ADDSUB_C             = 3
     DEBUG_PRINT          = 0
-    FACTOR               = 1.5          # Time constraint = FACTOR * ASAP_LATENCY
-    TIMEOUT              = 30          # Timeout for lp_solver in seconds
-
+    FACTOR               = 2.5
+    TIMEOUT              = 60           # lpsolve timeout in secs
+    TCS_TO_TEST          = 11           # verify whether the operations can be scheduled in these many cycles given res constraint
     #===------------------------------ASAP SCHEDULING-----------------------------===
     # Print instructions in DFG under test 
     idx = 0
@@ -163,7 +165,7 @@ def run(testcase):
     dut_name = os.path.splitext(os.path.basename(testcase))[0]
     dut = m.get_function_named(dut_name)
 
-    maxi = int(FACTOR * maxi);
+    maxi = TCS_TO_TEST;
 
     cycles_alap = {to_string(inst):(maxi+1) for inst in dut.basic_blocks[0].instructions}
     for inst in reversed(dut.basic_blocks[0].instructions):
@@ -247,7 +249,7 @@ def run(testcase):
       print addsub_constraint
    
     dependence_constraint = [[0 for x in range(maxi)] for x in range(no_of_inst-1)]
-    lp = lpsolve('make_lp', 0, (no_of_inst-1) * maxi + 2)
+    lp = lpsolve('make_lp', 0, (no_of_inst-1) * maxi)
     #===---------------------Dependence Constraint------------------------===
     if DEBUG_PRINT == 1:
       print '------Dependence Constraint-------'
@@ -277,15 +279,11 @@ def run(testcase):
               for j in range(0, no_of_inst-1):
                 k =(maxi*j + i)
                 d_add[k] = dependence_constraint[j][i]
-                d_add_c = [0] * 2
-                d_addf = d_add + d_add_c
-            ret = lpsolve('add_constraint', lp, d_addf, LE, -1)
+            ret = lpsolve('add_constraint', lp, d_add, LE, -1)
             if DEBUG_PRINT == 1:
               print dependence_constraint
-              print d_addf
 
     no_of_inst = no_of_inst-1
-    #lp = lpsolve('make_lp', 0, no_of_inst * maxi)
     for i in range(1,(no_of_inst*maxi)):
       ret = lpsolve('set_binary', lp, i, 1)
     #===---------------------Add Unique Start Time Constraint------------------------===
@@ -295,18 +293,17 @@ def run(testcase):
       y = unique_start_time[i]
       v = [1] * maxi
       z = [0] * ((no_of_inst*maxi - maxi - i*maxi))
-      u = [0] * 2
-      w = x+y+z+u
+      w = x+y+z
       if DEBUG_PRINT == 1:
         print w
       ret = lpsolve('add_constraint', lp, w, EQ, 1)
-      w = x+v+z+u
+      w = x+v+z
       ret = lpsolve('add_constraint', lp, w, EQ, 1)
       if DEBUG_PRINT == 1:
         print w
-        #print x
-        #print y
-        #print z
+        print x
+        print y
+        print z
     
     d_add  = [0] * no_of_inst*maxi
     if DEBUG_PRINT == 1:
@@ -320,40 +317,20 @@ def run(testcase):
         b_mul[k] = mul_constraint[j][i]
         b_add[k] = addsub_constraint[j][i]
         d_add[k] = dependence_constraint[j][i]
-        b_mul_c  = [-1, 0]
-        b_muld   = b_mul + b_mul_c;
-        b_add_c  = [0, -1]
-        b_addd    = b_add + b_add_c;
-      ret = lpsolve('add_constraint', lp, b_muld, LE, 0)
-      ret = lpsolve('add_constraint', lp, b_addd, LE, 0)
+      ret = lpsolve('add_constraint', lp, b_mul, LE, MUL_C)
+      ret = lpsolve('add_constraint', lp, b_add, LE, ADDSUB_C)
       if DEBUG_PRINT == 1:
         print b_add
         print b_addd
 
-
-    objective = [0] * ((no_of_inst) * maxi) + [1,1]
-    if DEBUG_PRINT == 1:
-      print '---objective---'
-      print objective
-
-    ret = lpsolve('set_obj_fn', lp, objective)
     obj = lpsolve('set_timeout',lp, TIMEOUT)
     obj = lpsolve('solve',lp)
     var = lpsolve('get_variables', lp)
     
-    mulcount    = var[0][(no_of_inst)*maxi]
-    addsubcount = var[0][(no_of_inst)*maxi+1]
-
     if DEBUG_PRINT == 1:
         print var
    
     print ' \n \n '
-    message = " Time Constraint " + str(FACTOR) + " * ASAP_LATENCY"
-    print message
-    message = " Number of multipliers required = " + str(mulcount)
-    print message
-    message = " Number of addsub units required = " + str(addsubcount)
-    print message
     message = " Time taken to execute = " + str(time.time() - start_time) + " seconds"
     print message
     fp.write('------------------------ILP-------------------')
