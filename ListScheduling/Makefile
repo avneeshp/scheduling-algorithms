@@ -7,7 +7,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../../..
+LEVEL = ../..
 LIBRARYNAME = list_scheduling
 LOADABLE_MODULE = 1
 USEDLIBS =

@@ -1,8 +1,8 @@
 #include "llvm/ADT/Statistic.h"
-#include "llvm/IR/BasicBlock.h"
+#include "llvm//BasicBlock.h"
 #include "llvm/Pass.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/User.h"
+#include "llvm/Instructions.h"
+#include "llvm/User.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/STLExtras.h"
 #include <iostream>
@@ -13,8 +13,7 @@
 #include <set>
 #include <list>
 #include <string.h>
-
-#define MAX_VAL 100
+#include <unistd.h>
 
 using namespace llvm;
 
@@ -34,18 +33,25 @@ namespace {
     void printCycleTimeLS(std::map<Instruction*, int> opMap, std::ofstream& myfile, int max_value);
     std::map<Instruction*, int> ListSchedule(BasicBlock &BB, int* curr_time, int csteps, std::map<Instruction*, int> asapList,  std::map<Instruction*, int> alapList);
 
-    bool runOnBasicBlock(BasicBlock &BB) override {
+    virtual bool runOnBasicBlock(BasicBlock &BB) {
 	std::map <Instruction*, int> asapSchedList = ASAP(BB);
 	int csteps = getTotalCSteps(asapSchedList);
         std::map <Instruction* , int> alapSchedList = ALAP(BB, csteps);
 	int curr_time = 0;
  	std::map <Instruction*, int> listschedule = ListSchedule(BB, &curr_time,csteps,asapSchedList,alapSchedList);
-	
+
+	char* cwd = get_current_dir_name();	
+	const char* filename = "/schedule.txt";
+	int len = strlen(cwd) + strlen(filename);
+	char* path = (char*)malloc(len);
+	sprintf(path, "%s%s", cwd, filename);
 	std::ofstream myfile;
-	myfile.open ("/home/deepagm/llvm/TestFiles/schedule.txt");//specify the path for the file for schedule.txt
+	myfile.open (path);	
 	myfile << "***** List Scheduling ***** \n\n";
 	printCycleTimeLS(listschedule, myfile, curr_time);
 	myfile.close();
+	if (NULL != cwd) free (cwd);
+	if (NULL != path) free(path);
 	return true;
     }
   };
@@ -61,7 +67,6 @@ std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 		instList.push_back(Inst->getName());
 		asapList[Inst] = 0;
 	}
-        std::ofstream myfile;
 	
 	for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
 		Instruction *Inst = DI++;
@@ -84,8 +89,8 @@ std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 		for (std::map<Instruction*, int>::iterator mapIter=asapList.begin(); mapIter != asapList.end(); ++mapIter) {
 			Inst = mapIter->first;
 			if ((unsigned)mapIter->second == i) {
-				for (Use &U : Inst->uses()) { 
-					Instruction *User = cast<Instruction>(U.getUser());
+				for (Value::use_iterator UI = Inst->use_begin(); UI != Inst->use_end(); UI++) {
+					Instruction *User = static_cast<Instruction*>(*UI);
 					asapList[User] = asapList[Inst] + 1;
 				}
 			}
@@ -93,13 +98,13 @@ std::map<Instruction* , int>l_s::ASAP(BasicBlock &BB)
 		i++;
 	}
 	int c = 0;
-	for(auto i = asapList.begin(); i!= asapList.end(); i++)
+	for(std::map<Instruction*, int>::iterator i = asapList.begin(); i!= asapList.end(); i++)
 	{
 		if( i->second== 0) c++;
 		if (c > 2) break;
 	}
 	if(c>2) {
-	for(auto i = asapList.begin(); i!= asapList.end(); ++i)
+	for(std::map<Instruction*, int>::iterator i = asapList.begin(); i!= asapList.end(); ++i)
 	{	asapList[i->first] = asapList[i->first]+1;
 	}} 
 	instList.clear();
@@ -140,8 +145,8 @@ int l_s::getTotalCSteps(std::map<Instruction*, int> asapList)
 std::set<Instruction*> l_s::getSuccessors(Instruction* Inst)
 {
 	std::set<Instruction*> succSet;
-	for (Use &U : Inst->uses()) {
-		Instruction *User = cast<Instruction>(U.getUser());
+	for (Value::use_iterator UI = Inst->use_begin(); UI != Inst->use_end(); UI++) {
+		Instruction *User = static_cast<Instruction*>(*UI);
 		succSet.insert(User);
 	}
 	return succSet;
@@ -188,24 +193,29 @@ std::map<Instruction* , int>l_s::ListSchedule(BasicBlock &BB, int* curr_time, in
 	int mul_units;
 	int add_units;
 
+	char* cwd = get_current_dir_name();
+	const char* fname = "/Resource_constraints.txt";
+	int length = strlen(cwd) + strlen(fname);
+	char* constraints_path = (char*)malloc(length);
+	sprintf(constraints_path, "%s%s", cwd, fname);
 	std::ifstream myfile;
-	myfile.open ("/home/deepagm/llvm/TestFiles/Resource_constraints.txt"); //specify the path for the file for Resource_constraints.txt
+	myfile.open (constraints_path);
 	if (myfile.is_open())
   	{
   		myfile >>mul_units;
-		//errs() <<mul_units<<'\n';
 		myfile >>add_units;
-		//errs() <<add_units<<'\n';
 	        myfile.close();
 	}
 	else
 	{
 	        errs() << "Unable to open file"<<'\n';
 	}
+	if (NULL != cwd) free(cwd);
+	if (NULL != constraints_path) free(constraints_path);
 
 	std::map <Instruction* , int> List_p ;
 	std::map <Instruction* , int> List_ls ;
-        std::set<Instruction*> predset;
+        std::map<Instruction*, int> predset;
 	BasicBlock::iterator DI;
 	int total_mul =0;
 	int total_add =0;
@@ -230,7 +240,7 @@ std::map<Instruction* , int>l_s::ListSchedule(BasicBlock &BB, int* curr_time, in
 		{    
 		  std::map<Instruction*, int> predSet;
 		  Instruction* It;
-		  for(auto j = List_p.begin(); j!=List_p.end(); j++)
+		  for(std::map <Instruction* , int>::iterator j = List_p.begin(); j!=List_p.end(); j++)
 		  {
 					
 			canSchedule=true; 	         	
@@ -241,7 +251,7 @@ std::map<Instruction* , int>l_s::ListSchedule(BasicBlock &BB, int* curr_time, in
 			int max_time=time;
 			if(predSet.size() > 0) 
 			{
-			  for(auto j1=predSet.begin(); j1!=predSet.end(); j1++)
+			  for(std::map<Instruction*, int>::iterator j1=predSet.begin(); j1!=predSet.end(); j1++)
 			  {
 				
 				if((predSet[j1->first]==0) || (predSet[j1->first] == time)) canSchedule = false;
@@ -283,8 +293,8 @@ std::map<Instruction*,int> l_s::getPredecessors(Instruction* Inst, std::map<Inst
 {
 	std::map<Instruction*,int> predSet;
 	for (std::map<Instruction*, int>::iterator iter=instList.begin(); iter != instList.end(); ++iter) {
-	    for (Use &U : (iter->first->uses())) {
-		Instruction *User = cast<Instruction>(U.getUser());
+	    for (Value::use_iterator UI = iter->first->use_begin(); UI != iter->first->use_end(); UI++) {
+		Instruction *User = static_cast<Instruction*>(*UI);
 		if (User == Inst) {
 			predSet[iter->first] = instList[iter->first];
 		}
