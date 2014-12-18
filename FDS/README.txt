@@ -1,4 +1,4 @@
-Follows the following steps to run:
+Follow the following steps to run:
 
 1) cd $HOME
 2) cp /work/zhang/common/tools/llvm/src/llvm-3.1.sample/ . -a
@@ -17,5 +17,5 @@ Follows the following steps to run:
 /work/zhang/common/tools/llvm/3.1/bin/llvm-as pr.ll	#similar for other benchmarks
 
 13) Set number of times the ASAP cycle time you want to set the FDS cycle time. By default it is one i.e. equal to ASAP cycle time.
-13) $HOME/llvm-3.1.sample/build/Release+Asserts/bin/opt -analyze -S -p -load $HOME/llvm-3.1.sample/build/Release+Asserts/lib/LLVMFDS.so -fds < pr.bc > /dev/null
-14) An output file schedule.txt is generated in the current working directory having force directed schedules with number of functional units required.
+14) $HOME/llvm-3.1.sample/build/Release+Asserts/bin/opt -analyze -S -p -load $HOME/llvm-3.1.sample/build/Release+Asserts/lib/LLVMFDS.so -fds < pr.bc > /dev/null
+15) An output file schedule.txt is generated in the current working directory having force directed schedules with number of functional units required.
